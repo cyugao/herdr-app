@@ -1,6 +1,6 @@
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { spaces, panes, run, openOverlay, theme, window, shared, layout, settings } from "herdr";
+import { spaces, panes, run, openOverlay, theme, window, shared, setShared, nextCommand, exec, layout, settings } from "herdr";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -12,9 +12,53 @@ function find(node, id) {
 }
 
 export default class Tabs extends View {
-  init() {
+  init(_props, cx) {
     this.pressed = null;
     this.panels = JSON.parse(localStorage.getItem("panels") ?? "{}");
+    this.fileSequence = 0;
+    this.fileSession = `${Date.now()}-${Math.random()}`;
+    cx.spawn(async cx => {
+      for (;;) {
+        const command = await nextCommand();
+        if (command.startsWith("open_file:")) {
+          try { this.openFile(JSON.parse(command.slice(10)), cx); }
+          catch (e) { console.log(`Cannot open file link: ${e}`); }
+        }
+        cx.notify();
+      }
+    });
+  }
+
+  openFile(file, cx) {
+    if (typeof file.path !== "string" || !file.path || file.on != null || file.space !== spaces().find(s => s.active)?.id) return;
+    if (this.pendingFile && shared("files.open")?.id === this.pendingFile.id) setShared("files.open", null);
+    this.pendingFile = null;
+    const root = layout(), panel = find(root, "panel"), body = find(panel, "panel-body");
+    const files = body?.children?.find(c => c.id === "files" && c.content?.mod === "files" && c.content.props?.file_links);
+    if (!panel || body?.type !== "stack" || !files || !(shared("workspace.panels") ?? ["files", "changes"]).includes("files")) {
+      const platform = window()?.platform;
+      cx.spawn(async () => { await exec(platform === "macos" ? "open" : platform === "windows" ? "explorer.exe" : "xdg-open", [file.path]); });
+      return;
+    }
+    this.pendingFile = { ...file, id: `${this.fileSession}-${++this.fileSequence}` };
+    this.panels[file.space] = "files";
+    localStorage.setItem("panels", JSON.stringify(this.panels));
+    run("layout.select", { stack: "panel-body", child: "files" });
+    run("layout.show", { id: "panel" });
+  }
+
+  syncFile() {
+    const pending = this.pendingFile;
+    if (!pending) return;
+    if (pending.space !== spaces().find(s => s.active)?.id || shared("files.opened") === pending.id) {
+      if (shared("files.open")?.id === pending.id) setShared("files.open", null);
+      this.pendingFile = null; return;
+    }
+    const receiver = shared("files.receiver");
+    if (typeof receiver === "string" && receiver !== pending.receiver) {
+      pending.receiver = receiver;
+      setShared("files.open", pending);
+    }
   }
 
   // The side panel is remembered per space: switching shows that space's choice
@@ -46,6 +90,7 @@ export default class Tabs extends View {
   }
 
   render() {
+    this.syncFile();
     const t = theme();
     const space = spaces().find(p => p.active);
     const shown = space?.tabs ?? [];

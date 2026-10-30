@@ -137,6 +137,17 @@ pub fn open(target: &Target) {
     }
 }
 
+/// A layout opts into file handling through an existing mod command. Remote
+/// terminal paths must never be mistaken for coincident files on this machine.
+pub fn file_command(handler: Option<&str>, target: &Target, terminal: &str, cwd: Option<&Path>, space: Option<&str>) -> Option<(String, String)> {
+    let Target::File(path) = target else { return None };
+    if terminal.contains('/') || !path.is_file() { return None; }
+    let (name, command) = handler?.split_once('.')?;
+    if name.is_empty() || command.is_empty() { return None; }
+    let payload = serde_json::json!({ "path": path.to_str()?, "terminal": terminal, "cwd": cwd.and_then(Path::to_str), "space": space, "on": null });
+    Some((name.to_owned(), format!("{command}:{payload}")))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -328,6 +339,32 @@ mod tests {
             std::fs::write(&dotted, "").unwrap();
             assert_eq!(resolve("src/main.rs.", Some(&dir)), Some(Target::File(dotted)));
         }
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn file_handlers_receive_literal_local_file_and_source_only_when_opted_in() {
+        let dir = std::env::temp_dir().join(format!("herdr-file-command-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("a quote's file.txt");
+        std::fs::write(&path, "hello").unwrap();
+        let target = Target::File(path.clone());
+        let (name, command) = file_command(Some("tabs.open_file"), &target, "t2", Some(&dir), Some("s1")).unwrap();
+        assert_eq!(name, "tabs");
+        let payload: serde_json::Value = serde_json::from_str(command.strip_prefix("open_file:").unwrap()).unwrap();
+        assert_eq!(payload, serde_json::json!({ "path": path, "terminal": "t2", "cwd": dir, "space": "s1", "on": null }));
+        for handler in [None, Some(""), Some("tabs"), Some(".open_file"), Some("tabs.")] {
+            assert_eq!(file_command(handler, &target, "t2", Some(&dir), Some("s1")), None);
+        }
+        assert_eq!(file_command(Some("tabs.open_file"), &target, "remote/t2", Some(&dir), Some("s1")), None);
+        assert_eq!(file_command(Some("tabs.open_file"), &Target::File(dir.clone()), "t2", None, None), None);
+        assert_eq!(file_command(Some("tabs.open_file"), &Target::Url("file:///tmp/example".into()), "t2", None, None), None);
+        assert_eq!(file_command(Some("tabs.open_file"), &Target::Url("https://example.com".into()), "t2", None, None), None);
+        let mut root = crate::layout::Node::container("root", crate::layout::Axis::Row, vec![]);
+        assert!(serde_json::to_value(&root).unwrap().get("file_link").is_none());
+        root.file_link = Some("tabs.open_file".into());
+        let restored: crate::layout::Node = serde_json::from_value(serde_json::to_value(&root).unwrap()).unwrap();
+        assert_eq!(restored.file_link.as_deref(), Some("tabs.open_file"));
         std::fs::remove_dir_all(dir).unwrap();
     }
 }

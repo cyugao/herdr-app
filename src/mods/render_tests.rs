@@ -159,6 +159,10 @@ fn module(values: BTreeMap<String, Value>, calls: Rc<RefCell<Calls>>) -> HostMod
         module = module.async_function(name, move |a| {
             let first = a.get(0).map(from_host).unwrap_or(Value::Null);
             let reply = match name {
+                "readTextFile" if first == "/fixture/project/linked.rs" => {
+                    calls.borrow_mut().effects.push((name.into(), (0..2).filter_map(|i| a.get(i).map(from_host)).collect()));
+                    Some(json!("fn main() {}"))
+                }
                 "readTextFile" if first == "/fixture/app/settings.json" || first == "/fixture/.ssh/config" => Some(Value::Null),
                 "readTextFile" => first
                     .as_str()
@@ -275,6 +279,45 @@ fn shipped_initial_descriptions(cx: &mut TestAppContext) {
         entries.len(),
         start.elapsed()
     );
+}
+
+#[gpui::test]
+fn files_link_request_uses_host_props_and_reaches_native_editor(cx: &mut TestAppContext) {
+    cx.update(gpui_shell::init);
+    let staged = Staged::new();
+    let calls = Rc::new(RefCell::new(Calls::default()));
+    let policy = Policy::new().with_host_module(module(
+        fixture(true, json!({"file_links":true}), updates("current", "current")), calls.clone(),
+    )).unwrap();
+    std::fs::write(staged.0.join("main.js"), r#"
+        import Real from './mods/files/main.js';
+        import { setShared } from 'herdr';
+        export default class Scenario extends Real {
+          init(props, cx) {
+            super.init(props, cx);
+            if (!this.receiver) throw new Error('Files must read its layout props from herdr.props()');
+            setShared('files.open', {id:'click-1', receiver:this.receiver, path:'/fixture/project/linked.rs', space:'s1', on:null});
+          }
+        }
+    "#).unwrap();
+    let window = cx.add_window(|_, _| Empty);
+    let mut session = window.update(cx, |_, window, cx| {
+        let mut session = DescriptionSession::load(ShellRuntime::new_isolated().unwrap(), &staged.0, policy, window, cx).unwrap();
+        session.describe(window, cx).unwrap();
+        session
+    }).unwrap();
+    cx.run_until_parked();
+    let tree = window.update(cx, |_, window, cx| {
+        let tree = session.describe(window, cx).unwrap();
+        window.remove_window();
+        tree
+    }).unwrap();
+    assert!(tree.contains("Editor") && tree.contains("/fixture/project/linked.rs"), "{tree}");
+    let calls = calls.borrow();
+    assert!(calls.unexpected.is_empty(), "{:?}", calls.unexpected);
+    assert_eq!(calls.shared.get("files.open"), Some(&Value::Null));
+    assert_eq!(calls.shared.get("files.opened"), Some(&json!("click-1")));
+    assert!(calls.effects.contains(&("readTextFile".into(), vec![json!("/fixture/project/linked.rs"), json!({"on":null})])));
 }
 
 #[gpui::test]

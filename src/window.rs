@@ -1372,8 +1372,15 @@ impl AppWindow {
             let view = cx.new(|cx| TerminalView::attach(self.core.clone(), address.clone(), size_hint, cx));
             self.tell_term(&view, &address, cx);
             let (block, addr) = (id.clone(), address.clone());
-            let sub = cx.subscribe_in(&view, window, move |this, _, ev: &TerminalEvent, window, cx| match ev {
+            let sub = cx.subscribe_in(&view, window, move |this, view, ev: &TerminalEvent, window, cx| match ev {
                 TerminalEvent::Peek(address) => this.peek_terminal(address, window, cx),
+                TerminalEvent::OpenLink(target) => {
+                    let cwd = view.read(cx).cwd.clone();
+                    let space = this.model.active_space().map(|s| s.id.as_str());
+                    let delivered = crate::links::file_command(this.chrome.file_link.as_deref(), target, &addr, cwd.as_deref(), space)
+                        .is_some_and(|(name, command)| mods::send_command(&name, &command));
+                    if !delivered { crate::links::open(target); }
+                }
                 TerminalEvent::TitleChanged => this.publish(cx),
                 TerminalEvent::Ended => this.terminal_ended(&block, window, cx),
                 TerminalEvent::ContextMenu(at) => {

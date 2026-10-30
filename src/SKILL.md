@@ -83,6 +83,10 @@ those files or the generated guide. The app rewrites them on start.
 - Shipped mods belong to Herdr: duplicate with `mod.clone` before editing.
   Shipped layouts likewise use `layout.clone` for a personal copy.
   Discover required arguments with `herdr-app commands`.
+- In the main layout, Cmd-click on macOS (Ctrl-click elsewhere) on a local
+  terminal file path opens a read-only Files side preview. Other layouts can
+  opt in with root `file_link` (see the installed guide); URLs and directories
+  retain system opening.
 - Save to reload. A broken save keeps the old version running and reports
   an error in `status`; a still-working screen is not proof the edit worked.
 - Make only the requested change. Don't touch unrelated mods or settings.
