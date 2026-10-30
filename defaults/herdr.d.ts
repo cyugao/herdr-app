@@ -225,6 +225,9 @@ export function focused(): { space: string; tab: string; pane: string | null; te
  *  Root `terminal_menu?: string` chooses a terminal right-click menu mod (default: "menu").
  *  Unknown names warn and fall back to "menu". This replaces the menu, not its items.
  *  Opens a pointer popup with mod.json overlay width/height (default 220×260). */
+/** Root `file_link?: string` opts into local terminal file links via a shown mod command,
+ *  e.g. "tabs.open_file" receives `open_file:` + JSON {path, terminal, cwd, space, on: null}.
+ *  Missing/unshown handlers, directories, URLs and remote terminal links keep system opening. */
 export function layout(): unknown;
 
 /** The names of every layout in layouts/ (main first). */

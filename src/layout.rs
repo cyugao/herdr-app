@@ -375,6 +375,9 @@ pub struct Node {
     /// Root only: the terminal right-click menu's mod (default: `menu`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub terminal_menu: Option<String>,
+    /// Root only: a mod command receiving local file links, e.g. `tabs.open_file`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_link: Option<String>,
     /// Dragging this node moves the window; a double-click maximizes it.
     #[serde(default, skip_serializing_if = "is_false")]
     pub window_drag: bool,
@@ -414,6 +417,7 @@ impl Node {
             traffic_lights: None,
             preview: None,
             terminal_menu: None,
+            file_link: None,
             window_drag: false,
         }
     }

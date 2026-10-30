@@ -34,6 +34,7 @@ enum LinkTarget {
 
 pub enum TerminalEvent {
     Peek(String),
+    OpenLink(links::Target),
     TitleChanged,
     /// The program ended.
     Ended,
@@ -1343,7 +1344,7 @@ impl Render for TerminalView {
                     && let Some((target, _)) = this.link_at(ev.position)
                 {
                     match target {
-                        LinkTarget::External(target) => links::open(&target),
+                        LinkTarget::External(target) => cx.emit(TerminalEvent::OpenLink(target)),
                         LinkTarget::Terminal(address) => cx.emit(TerminalEvent::Peek(address)),
                     }
                     return;

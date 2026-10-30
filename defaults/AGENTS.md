@@ -261,6 +261,21 @@ Properties any node can have:
   right-clicks (including Shift+right-click). Omit it for the shipped `menu`;
   an unknown mod logs a warning and falls back to `menu`. Clone a shipped
   layout before changing this field. Other menus are unchanged.
+- Root only: `"file_link": "tabs.open_file"` routes Ctrl-click (Cmd-click on
+  macOS) on an existing local file in terminal text to that mod's
+  `nextCommand()`: `open_file:` followed by JSON `{path, terminal, cwd, space,
+  on: null}`. `path` is absolute, `cwd` belongs to the clicked terminal, and
+  `space` is the selected space when clicked. The handler must be shown.
+  Without a handler or shown receiver, files open with the system as before;
+  directories, URLs (including `file://`) and remote terminals use the system.
+  `main` opts in: its tab bar opens the read-only Files side panel, including
+  files outside the focused folder. If Files is disabled or absent, it opens
+  externally. Line/column suffixes resolve the file but don't position the
+  preview. Personal layouts opt in explicitly; clone before changing a shipped
+  layout. File requests are not replayed after restart.
+  The side panel's Files block uses `props: {file_links: true}` to receive
+  these requests; ordinary Files copies do not intercept them. The tab bar
+  and Files mod coordinate through their own `files.*` shared keys.
 - Colors are theme names (`border`, `accent`, `surface`, ...) or `#rrggbb[aa]`.
 
 A personal terminal menu replaces the whole menu; it doesn't merge items.

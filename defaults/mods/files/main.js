@@ -1,7 +1,7 @@
 // A lazy file browser for the focused pane's folder, with bounded read-only previews.
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, Editor, EditorState } from "gpui-base";
-import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, window } from "herdr";
+import { spaces, panes, focused, exec, readTextFile, watchFolder, theme, settings, window, shared, setShared, props } from "herdr";
 
 function location() {
   const space = spaces().find(s => s.active), f = focused();
@@ -30,6 +30,10 @@ async function directory(path, on) {
 
 export default class Files extends View {
   init(_props, cx) {
+    // A persisted request can only be accepted by the live copy it was sent to.
+    this.receiver = props()?.file_links ? `${Date.now()}-${Math.random()}` : null;
+    this.fileSequence = 0;
+    if (this.receiver) setShared("files.receiver", this.receiver);
     this.saved = new Map();
     this.entries = new Map(); this.folders = new Set(); this.pending = new Set(); this.marks = {};
     this.refresh(cx);
@@ -62,12 +66,12 @@ export default class Files extends View {
   refresh(cx) {
     const { cwd, on } = location(), next = key();
     if (next !== this.context?.key) {
-      if (this.context) this.saved.set(this.context.key, { folders: this.folders, file: this.file });
+      if (this.context) this.saved.set(this.context.key, { folders: this.folders, file: this.file, source: this.fileSource });
       const saved = this.saved.get(next);
       this.context = { key: next, cwd, on }; this.root = cwd; this.on = on; this.entries = new Map(); this.folders = new Set(saved?.folders);
       this.pending = new Set(); this.marks = {}; this.show(null); this.watched = null; this.error = null; this.limited = false;
       this.loading = false;
-      if (saved?.file) this.show(saved.file, cx);
+      if (saved?.file) this.show(saved.file, cx, saved.source);
     }
     if (!cwd || this.loading) return;
     const context = this.context;
@@ -117,14 +121,16 @@ export default class Files extends View {
     cx.notify();
   }
 
-  show(path, cx) {
+  show(path, cx, source = null) {
     this.code?.release(); this.code = null; this.file = path; this.fileError = null;
+    this.fileSource = source;
+    const sequence = ++this.fileSequence;
     if (!path || !cx) return;
     const context = this.context, root = this.root, on = this.on;
     cx.spawn(async cx => {
       try {
-        const text = await readTextFile(`${root}/${path}`, { on });
-        if (this.file !== path || !this.current(context)) return;
+        const text = await readTextFile(source ? path : `${root}/${path}`, { on: source ? source.on : on });
+        if (this.fileSequence !== sequence || !this.current(context)) return;
         if (text === null) { this.fileError = "This file is no longer available"; return; }
         if (text.includes("\0")) { this.fileError = "Binary file · no text preview"; return; }
         const t = theme(), ext = path.includes(".") ? path.split(".").pop() : "txt";
@@ -132,7 +138,7 @@ export default class Files extends View {
           value: text.length > 400000 ? text.slice(0, 400000) + "\n… (file truncated)" : text,
           font_family: settings().font_family, font_size: 12,
           syntax: { keyword: t.ansi5, string: t.ansi2, comment: t.dim, function: t.ansi4, type: t.ansi3, number: t.ansi1, constant: t.ansi6 } });
-      } catch { if (this.file === path && this.current(context)) this.fileError = "Cannot preview this file (binary, too large, or unreadable)"; }
+      } catch { if (this.fileSequence === sequence && this.current(context)) this.fileError = "Cannot preview this file (binary, too large, or unreadable)"; }
       finally { cx.notify(); }
     });
   }
@@ -155,6 +161,13 @@ export default class Files extends View {
 
   render(cx) {
     if (key() !== this.context?.key) this.refresh(cx);
+    const request = shared("files.open");
+    if (this.receiver && request?.receiver === this.receiver && request.id !== this.opened && request.space === location().space && typeof request.path === "string" && request.on == null) {
+      this.opened = request.id;
+      this.show(request.path, cx, { on: null });
+      setShared("files.open", null);
+      setShared("files.opened", request.id);
+    }
     const t = theme();
     return v_flex().id("files").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13)
       .child(h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)

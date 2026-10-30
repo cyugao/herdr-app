@@ -1,6 +1,7 @@
 {
   "id": "root",
   "type": "row",
+  "file_link": "tabs.open_file",
   "titlebar": "none",
   "traffic_lights": [
     12,
@@ -151,7 +152,8 @@
                       "id": "files",
                       "type": "block",
                       "content": {
-                        "mod": "files"
+                        "mod": "files",
+                        "props": { "file_links": true }
                       }
                     },
                     {
